@@ -1,0 +1,17 @@
+[Unit]
+Description=StackChan Home Server 本地扩展服务
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/stackchan/repo/HomeServer
+EnvironmentFile=-/opt/stackchan/repo/HomeServer/.env
+ExecStart=/usr/bin/node /opt/stackchan/repo/HomeServer/dist/index.js
+Restart=always
+RestartSec=3
+User=stackchan
+Group=stackchan
+
+[Install]
+WantedBy=multi-user.target
