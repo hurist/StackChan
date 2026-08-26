@@ -15,6 +15,8 @@ export function createHttpServer() {
 
   app.get("/status", async () => getHomeServerStatus());
 
+  app.get("/robot/status", async () => getHomeServerStatus());
+
   return app;
 }
 

@@ -11,6 +11,18 @@ config STACKCHAN_SERVER_URL
 
 endmenu
 
+menu "StackChan Home Server"
+
+config HOME_SERVER_URL
+    string "Home Server base URL"
+    default "http://192.168.1.10:8787"
+    help
+        Base URL (scheme + host + port, no trailing slash) of the local
+        StackChan Home Server. The firmware MCP tools compose robot-oriented
+        endpoints like /robot/status from this base.
+
+endmenu
+
 menu "Xiaozhi Assistant"
 
 config OTA_URL

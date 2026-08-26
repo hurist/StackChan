@@ -8,10 +8,56 @@
 #include <mcp_server.h>
 #include <stackchan/stackchan.h>
 #include <apps/common/common.h>
+#include <board.h>
+#include <sdkconfig.h>
 
 using namespace stackchan;
 
 static const std::string_view _tag = "HAL-MCP";
+
+static std::string get_home_server_url()
+{
+#ifdef CONFIG_HOME_SERVER_URL
+    return CONFIG_HOME_SERVER_URL;
+#else
+    return "";
+#endif
+}
+
+static std::string fetch_home_status()
+{
+    const std::string base_url = get_home_server_url();
+    if (base_url.empty()) {
+        return R"({"connected":false,"message":"Home Server URL is not configured"})";
+    }
+
+    auto& board  = Board::GetInstance();
+    auto network = board.GetNetwork();
+    auto http    = network->CreateHttp(0);
+
+    if (!http) {
+        mclog::tagError(_tag, "failed to create http client");
+        return R"({"connected":false,"message":"Failed to create HTTP client"})";
+    }
+
+    const std::string url = base_url + "/robot/status";
+    if (!http->Open("GET", url)) {
+        mclog::tagError(_tag, "failed to open home status request: {}", url);
+        return R"({"connected":false,"message":"Failed to connect to Home Server"})";
+    }
+
+    const int status_code = http->GetStatusCode();
+    if (status_code != 200) {
+        mclog::tagError(_tag, "home status request failed, status code: {}", status_code);
+        http->Close();
+        return fmt::format(R"({{"connected":false,"message":"Home Server HTTP status {}"}})", status_code);
+    }
+
+    std::string response = http->ReadAll();
+    http->Close();
+    mclog::tagInfo(_tag, "home status response: {}", response);
+    return response;
+}
 
 void Hal::xiaozhi_mcp_init()
 {
@@ -23,6 +69,15 @@ void Hal::xiaozhi_mcp_init()
     // System Prompt：
     // You can control the robot's head. Use get_yaw and get_pitch to sense current position. Use set_yaw for horizontal
     // movement and set_pitch for vertical movement. All angles are in degrees.
+
+    mclog::tagInfo(_tag, "add home.get_status tool");
+    mcp_server.AddTool("self.home.get_status",
+                       "查询本地 StackChan Home Server 的连接状态。当用户询问 Home Server、家庭服务、远程服务"
+                       "或本地扩展服务是否在线、是否正常、是否连接成功时，使用这个工具。仅用于状态查询，"
+                       "不执行控制、拍照或消息发送。",
+                       std::vector<Property>{}, [this](const PropertyList& properties) -> ReturnValue {
+                           return fetch_home_status();
+                       });
 
     mclog::tagInfo(_tag, "add robot.get_head_angles tool");
     mcp_server.AddTool("self.robot.get_head_angles",

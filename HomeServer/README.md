@@ -4,15 +4,14 @@ Home Server 是 StackChan 的本地扩展中枢。它和官方 StackChan Server 
 
 当前范围：
 
-- HTTP 健康检查和状态接口
-- MCP stdio 服务
-- MCP 工具：`home.get_server_status`
+- HTTP 健康检查和机器人状态接口
+- 供 firmware MCP 工具调用的 `/robot/status`
 
 后续规划：
 
 - StackChan 固件连接状态
 - Telegram Bot 接入
-- 本地自动化和更多 MCP 工具
+- 本地自动化和更多机器人 HTTP 接口
 
 ## 环境要求
 
@@ -56,22 +55,10 @@ pnpm build
 pnpm dev:http
 ```
 
-构建并启动 MCP stdio 服务：
-
-```bash
-pnpm dev:mcp
-```
-
 启动已构建的 HTTP 服务：
 
 ```bash
 pnpm start:http
-```
-
-启动已构建的 MCP stdio 服务：
-
-```bash
-pnpm start:mcp
 ```
 
 ## Linux 部署步骤
@@ -178,22 +165,20 @@ Server listening at http://127.0.0.1:8787
 Server listening at http://<host-ip>:8787
 ```
 
-## MCP 客户端配置
+## Firmware 接入
 
-在 MCP 客户端中配置已构建的 MCP 入口：
+Home Server 不再提供桌面 stdio MCP 入口。机器人语音链路由 firmware 注册小智能调用的 MCP 工具，再通过 HTTP 请求 Home Server。
 
-```json
-{
-  "mcpServers": {
-    "stackchan-home": {
-      "command": "node",
-      "args": ["/opt/stackchan/repo/HomeServer/dist/mcp/server.js"],
-      "env": {
-        "HOME_SERVER_NAME": "stackchan-home-server"
-      }
-    }
-  }
-}
+第一版 firmware MCP 工具：
+
+```text
+self.home.get_status
+```
+
+该工具请求：
+
+```http
+GET /robot/status
 ```
 
 ## HTTP 接口
@@ -201,9 +186,10 @@ Server listening at http://<host-ip>:8787
 ```bash
 curl http://localhost:8787/health
 curl http://localhost:8787/status
+curl http://localhost:8787/robot/status
 ```
 
-这两个接口目前用于确认 Home Server 自身是否可达。
+`/health` 和 `/status` 用于确认 Home Server 自身是否可达，`/robot/status` 用于 firmware MCP 工具调用。
 
 ## 测试步骤
 
@@ -264,26 +250,13 @@ curl -s http://127.0.0.1:8787/health
 }
 ```
 
-### 3. MCP 启动测试
+### 3. 机器人状态接口测试
 
 ```bash
-pnpm start:mcp
+curl -s http://127.0.0.1:8787/robot/status
 ```
 
 预期结果：
-
-- 进程启动时没有错误。
-- 在普通终端里，如果 stdin 关闭，进程可能会直接退出；这是 stdio MCP 服务的正常行为。
-
-### 4. MCP 工具测试
-
-按上面的示例配置 MCP 客户端，然后调用：
-
-```text
-home.get_server_status
-```
-
-预期工具结果：
 
 ```json
 {
@@ -293,7 +266,7 @@ home.get_server_status
 }
 ```
 
-### 5. systemd 测试
+### 4. systemd 测试
 
 ```bash
 sudo systemctl restart stackchan-home-server
@@ -316,7 +289,7 @@ HTTP 响应应包含：
 }
 ```
 
-### 6. 局域网访问测试
+### 5. 局域网访问测试
 
 在同一局域网的另一台机器上请求：
 
@@ -331,9 +304,9 @@ sudo ufw status
 sudo ufw allow 8787/tcp
 ```
 
-## MCP 工具
+## 机器人接口
 
-`home.get_server_status`
+`GET /robot/status`
 
 返回：
 
@@ -345,7 +318,7 @@ sudo ufw allow 8787/tcp
 }
 ```
 
-第一版里，MCP 调用成功就代表 MCP 客户端能连接到 Home Server。后续可以在这个状态对象里继续扩展官方 server、StackChan 固件和 Telegram 的连接状态。
+第一版里，firmware 能通过 `self.home.get_status` 访问这个接口，就代表语音、小智 MCP、firmware、Home Server 的核心链路已打通。后续可以在这个状态对象里继续扩展官方 server、StackChan 固件和 Telegram 的连接状态。
 
 ## 排障
 
