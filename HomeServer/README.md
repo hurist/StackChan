@@ -6,11 +6,12 @@ Home Server 是 StackChan 的本地扩展中枢。它和官方 StackChan Server 
 
 - HTTP 健康检查和机器人状态接口
 - 供 firmware MCP 工具调用的 `/robot/status`
+- Telegram Bot grammY SDK 接入，支持 HomeServer 状态查询和远程命令占位反馈
 
 后续规划：
 
 - StackChan 固件连接状态
-- Telegram Bot 接入
+- firmware HomeRemote WebSocket 命令下发
 - 本地自动化和更多机器人 HTTP 接口
 
 ## 环境要求
@@ -33,6 +34,20 @@ cp .env.example .env
 HOME_SERVER_HOST=0.0.0.0
 HOME_SERVER_PORT=8787
 HOME_SERVER_NAME=stackchan-home-server
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_ALLOWED_CHAT_IDS=
+```
+
+Telegram 配置说明：
+
+```text
+TELEGRAM_BOT_TOKEN:
+  从 BotFather 获取。为空时不启动 Telegram Bot。
+
+TELEGRAM_ALLOWED_CHAT_IDS:
+  可选，逗号分隔，例如 123456789,-1001234567890。
+  为空时允许所有 chat，建议只在本地调试时使用。
+  可先启动 bot 后发送 /chatid 获取当前 chat id。
 ```
 
 ## 开发命令
@@ -55,10 +70,22 @@ pnpm build
 pnpm dev:http
 ```
 
+构建并启动完整 HomeServer，包括可选 Telegram Bot：
+
+```bash
+pnpm dev
+```
+
 启动已构建的 HTTP 服务：
 
 ```bash
 pnpm start:http
+```
+
+启动已构建的完整 HomeServer：
+
+```bash
+pnpm start
 ```
 
 ## Linux 部署步骤
@@ -116,6 +143,36 @@ cp .env.example .env
 HOME_SERVER_HOST=0.0.0.0
 HOME_SERVER_PORT=8787
 HOME_SERVER_NAME=stackchan-home-server
+
+OFFICIAL_SERVER_URL=
+STACKCHAN_SHARED_SECRET=change-me-home-remote-secret
+
+TELEGRAM_BOT_TOKEN=从 BotFather 获取的 token
+TELEGRAM_ALLOWED_CHAT_IDS=你的 Telegram chat id
+```
+
+如果第一次还不知道 `chat_id`，可以先留空：
+
+```bash
+TELEGRAM_ALLOWED_CHAT_IDS=
+```
+
+服务启动后，在 Telegram 里给 bot 发送 `/chatid`，把返回值填回 `.env`。例如个人会话：
+
+```bash
+TELEGRAM_ALLOWED_CHAT_IDS=123456789
+```
+
+群组或频道通常是负数，例如：
+
+```bash
+TELEGRAM_ALLOWED_CHAT_IDS=-1001234567890
+```
+
+多个 chat 用逗号分隔：
+
+```bash
+TELEGRAM_ALLOWED_CHAT_IDS=123456789,-1001234567890
 ```
 
 ### 4. 安装依赖并构建
@@ -163,7 +220,41 @@ sudo journalctl -u stackchan-home-server -f
 ```text
 Server listening at http://127.0.0.1:8787
 Server listening at http://<host-ip>:8787
+Telegram bot started
 ```
+
+如果没有配置 `TELEGRAM_BOT_TOKEN`，会看到：
+
+```text
+Telegram bot disabled: TELEGRAM_BOT_TOKEN is not set
+```
+
+### 7. 修改配置后重启
+
+每次修改 `.env` 后重启 systemd 服务：
+
+```bash
+sudo systemctl restart stackchan-home-server
+sudo journalctl -u stackchan-home-server -f
+```
+
+### 8. 局域网访问检查
+
+当前 HomeServer 计划固定部署在内网地址：
+
+```text
+192.168.50.50
+```
+
+同一局域网内可以检查：
+
+```bash
+curl http://192.168.50.50:8787/health
+curl http://192.168.50.50:8787/status
+curl http://192.168.50.50:8787/robot/status
+```
+
+Telegram Bot 使用 grammY SDK 从 HomeServer 主动连接 Telegram，不需要 Telegram 访问 `192.168.50.50`，因此第一版不需要公网 HTTPS、Webhook 或内网穿透。
 
 ## Firmware 接入
 
@@ -190,6 +281,28 @@ curl http://localhost:8787/robot/status
 ```
 
 `/health` 和 `/status` 用于确认 Home Server 自身是否可达，`/robot/status` 用于 firmware MCP 工具调用。
+
+## Telegram Bot
+
+启动完整服务：
+
+```bash
+pnpm dev
+```
+
+当前支持命令：
+
+```text
+/start
+/help
+/chatid
+/status
+/notify <text>
+/led r g b
+/photo
+```
+
+当前 `/notify` 和 `/led` 会通过 `/robot/ws` 下发给唯一在线的 firmware，并等待 `command_result` 回执。设备离线或多设备同时在线时立即返回错误，不做离线队列。`/photo` 第一版暂未开放，后续接入相机资源仲裁后再实现。
 
 ## 测试步骤
 

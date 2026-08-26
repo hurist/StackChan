@@ -5,7 +5,9 @@ export type HomeServerConfig = {
   port: number;
   name: string;
   officialServerUrl?: string;
+  stackchanSharedSecret?: string;
   telegramBotToken?: string;
+  telegramAllowedChatIds: string[];
 };
 
 function readNumber(name: string, fallback: number): number {
@@ -27,12 +29,26 @@ function readOptional(name: string): string | undefined {
   return value ? value : undefined;
 }
 
+function readStringList(name: string): string[] {
+  const value = process.env[name]?.trim();
+  if (!value) {
+    return [];
+  }
+
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 export function loadConfig(): HomeServerConfig {
   return {
     host: process.env.HOME_SERVER_HOST ?? "0.0.0.0",
     port: readNumber("HOME_SERVER_PORT", 8787),
     name: process.env.HOME_SERVER_NAME ?? "stackchan-home-server",
     officialServerUrl: readOptional("OFFICIAL_SERVER_URL"),
-    telegramBotToken: readOptional("TELEGRAM_BOT_TOKEN")
+    stackchanSharedSecret: readOptional("STACKCHAN_SHARED_SECRET"),
+    telegramBotToken: readOptional("TELEGRAM_BOT_TOKEN"),
+    telegramAllowedChatIds: readStringList("TELEGRAM_ALLOWED_CHAT_IDS")
   };
 }

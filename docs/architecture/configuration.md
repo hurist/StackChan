@@ -24,6 +24,8 @@
 | 配置项 | 文件 | 默认值 | 说明 | 是否需修改 |
 |---|---|---|---|---|
 | `CONFIG_STACKCHAN_SERVER_URL` | `firmware/main/Kconfig.projbuild:5` | `http://47.113.125.164:12800` | StackChan Server 基础地址，决定 WS/HTTP  endpoint | **必须改**（自托管） |
+| `CONFIG_HOME_SERVER_URL` | `firmware/main/Kconfig.projbuild:16` / `firmware/sdkconfig.defaults:12` | Kconfig: `http://192.168.1.10:8787`；当前 defaults: `http://192.168.50.50:8787` | StackChan HomeServer 基础地址。HomeRemote WebSocket 从它派生 `/robot/ws`，MCP `self.home.get_status` 从它请求 `/robot/status` | **必须和 HomeServer 实际地址一致** |
+| `CONFIG_HOME_SERVER_SHARED_SECRET` | `firmware/main/Kconfig.projbuild:24` / `firmware/sdkconfig.defaults:13` | 当前 defaults: `change-me-home-remote-secret` | firmware 连接 HomeServer `/robot/ws` 时使用的 shared secret，会作为 `Authorization: Bearer <secret>` 发送 | **必须和 HomeServer 的 `STACKCHAN_SHARED_SECRET` 一致，Secret** |
 | `CONFIG_OTA_URL` | `firmware/main/Kconfig.projbuild:18` | `https://api.tenclass.net/xiaozhi/ota/` | 默认 OTA/激活地址，决定固件升级和 AI 通道配置来源 | 按需改 |
 | `CONFIG_BOARD_TYPE_*` | `firmware/main/Kconfig.projbuild:133` | `BOARD_TYPE_M5STACK_STACK_CHAN` | 目标板型 | 按硬件选择 |
 | `CONFIG_LANGUAGE_*` | `firmware/main/Kconfig.projbuild:50` | `CONFIG_LANGUAGE_EN_US` | 设备显示语言 | 用户/项目均可 |
@@ -38,6 +40,19 @@
 | `CONFIG_BT_NIMBLE_ENABLED` | `firmware/sdkconfig.defaults:19` | `y` | BLE 使用 NimBLE | 项目级 |
 
 > 覆盖方式：创建 `firmware/sdkconfig.defaults.local` 或在 `idf.py menuconfig` 中修改。
+
+#### HomeRemote 第一版必配项
+
+| 配置项 | 当前值 | 含义 | 对应 HomeServer 配置 |
+|---|---|---|---|
+| `CONFIG_HOME_SERVER_URL` | `http://192.168.50.50:8787` | HomeServer HTTP 基础地址。firmware 会转换成 `ws://192.168.50.50:8787/robot/ws` 连接常驻远控通道 | `HOME_SERVER_HOST` / `HOME_SERVER_PORT` 决定服务监听地址 |
+| `CONFIG_HOME_SERVER_SHARED_SECRET` | `change-me-home-remote-secret` | HomeRemote WebSocket 鉴权密钥 | `STACKCHAN_SHARED_SECRET` |
+
+注意：
+
+- `CONFIG_HOME_SERVER_URL` 需要写 HTTP/HTTPS 基础地址，不要直接写 `ws://.../robot/ws`。
+- `CONFIG_HOME_SERVER_SHARED_SECRET` 为空时 firmware 不发鉴权 header；如果 HomeServer 配了 `STACKCHAN_SHARED_SECRET`，两边不一致会被拒绝连接。
+- 当前第一版没有做 App 下发地址、mDNS 或局域网扫描，换 HomeServer IP 后需要重新配置/烧录 firmware。
 
 ### 2.2 安全/认证逻辑（secret_logic）
 
@@ -136,9 +151,73 @@ Firmware 联网后访问 `OTA_URL`，返回 JSON 中可能包含：
 
 ---
 
-## 3. Server 配置
+## 3. HomeServer 配置
 
-### 3.1 `server/manifest/config/config.yaml`
+HomeServer 配置来自 `HomeServer/.env`，模板在 `HomeServer/.env.example`。当前第一版用于 Telegram Bot 和 firmware HomeRemote WebSocket。
+
+| 配置项 | 当前示例值 | 代码读取位置 | 含义 | 是否必须配置 |
+|---|---|---|---|---|
+| `HOME_SERVER_HOST` | `0.0.0.0` | `HomeServer/src/config.ts` | HTTP/WebSocket 监听网卡。部署到内网主机时用 `0.0.0.0` 允许局域网访问；本机调试可用 `127.0.0.1` | 必须 |
+| `HOME_SERVER_PORT` | `8787` | `HomeServer/src/config.ts` | HTTP/WebSocket 监听端口。firmware 的 `CONFIG_HOME_SERVER_URL` 端口必须与它一致 | 必须，正整数 |
+| `HOME_SERVER_NAME` | `stackchan-home-server` | `HomeServer/src/config.ts` | 服务名称，当前主要用于状态和日志语义 | 可选 |
+| `OFFICIAL_SERVER_URL` | 空 | `HomeServer/src/config.ts` | 官方 StackChan Server 地址预留项。第一版 HomeRemote/TG 下发未使用 | 可选 |
+| `STACKCHAN_SHARED_SECRET` | `change-me-home-remote-secret` | `HomeServer/src/config.ts` / `HomeServer/src/http/server.ts` | firmware 连接 `/robot/ws` 的 shared secret。HomeServer 会校验 `Authorization: Bearer <secret>` | 建议配置，必须和 `CONFIG_HOME_SERVER_SHARED_SECRET` 一致 |
+| `TELEGRAM_BOT_TOKEN` | 空 | `HomeServer/src/config.ts` / `HomeServer/src/telegram/bot.ts` | Telegram BotFather 发放的 bot token。为空时不启动 Telegram Bot | 使用 TG 时必须 |
+| `TELEGRAM_ALLOWED_CHAT_IDS` | 空 | `HomeServer/src/config.ts` / `HomeServer/src/telegram/bot.ts` | 允许访问 bot 的 chat id 列表，逗号分隔，如 `123456789,-1001234567890`。为空表示允许所有 chat | 强烈建议生产配置 |
+
+`.env.example` 中使用占位 shared secret，实际部署时两端改成同一个私有值：
+
+```env
+STACKCHAN_SHARED_SECRET=change-me-home-remote-secret
+```
+
+与 firmware 对应：
+
+```text
+CONFIG_HOME_SERVER_SHARED_SECRET="change-me-home-remote-secret"
+```
+
+### 3.1 HomeServer 与 firmware 地址对应关系
+
+如果 HomeServer 部署在 `192.168.50.50:8787`：
+
+```env
+HOME_SERVER_HOST=0.0.0.0
+HOME_SERVER_PORT=8787
+```
+
+firmware 应配置：
+
+```text
+CONFIG_HOME_SERVER_URL="http://192.168.50.50:8787"
+```
+
+firmware 内部会派生：
+
+```text
+ws://192.168.50.50:8787/robot/ws
+```
+
+### 3.2 Telegram 配置说明
+
+`TELEGRAM_BOT_TOKEN` 从 BotFather 获取。为空时 HomeServer 仍会启动 HTTP/WS，但不会启动 TG Bot。
+
+`TELEGRAM_ALLOWED_CHAT_IDS` 建议配置为你的个人 chat id 或群组 id。第一次不知道 chat id 时可以临时留空，启动 bot 后发送 `/chatid`，把返回值填回 `.env`，然后重启 HomeServer。
+
+### 3.3 第一版命令配置关系
+
+| Telegram 命令 | 是否需要 firmware 在线 | firmware command | 备注 |
+|---|---|---|---|
+| `/status` | 有唯一在线设备时会下发；无设备时只返回 HomeServer 状态 | `status` | 不做离线队列 |
+| `/notify <text>` | 需要 | `notify` | Mooncake 下 toast；AI Agent 等场景只确认收到并打日志 |
+| `/led r g b` | 需要 | `set_led_color` | `r/g/b` 范围 `0-168`，临时效果，不持久化 |
+| `/photo` | 不下发 | 无 | 第一版暂未开放 |
+
+---
+
+## 4. Server 配置
+
+### 4.1 `server/manifest/config/config.yaml`
 
 | 配置项 | 路径 | 默认值 | 说明 | 是否必须修改 |
 |---|---|---|---|---|
@@ -160,7 +239,7 @@ Firmware 联网后访问 `OTA_URL`，返回 JSON 中可能包含：
 
 > 空密钥会导致服务启动后认证失败。参考 `server/utility/rsa.go:44`、`server/internal/xiaozhi/xiaozhi.go:344`。
 
-### 3.2 硬编码配置
+### 4.2 硬编码配置
 
 | 配置项 | 文件 | 值 | 说明 |
 |---|---|---|---|
@@ -172,7 +251,7 @@ Firmware 联网后访问 `OTA_URL`，返回 JSON 中可能包含：
 
 > **注意**：`cmd.go:86` 的 `s.SetPort(12800)` 会覆盖 `config.yaml` 中配置的端口。K8s 部署模板中服务端口为 `8000`，与代码不一致，需统一。
 
-### 3.3 数据库连接串格式
+### 4.3 数据库连接串格式
 
 GoFrame `database.default.link` 示例：
 
@@ -194,9 +273,9 @@ database:
 
 ---
 
-## 4. App 配置
+## 5. App 配置
 
-### 4.1 后端地址配置
+### 5.1 后端地址配置
 
 | 配置项 | 文件 | 默认值 | 说明 | 是否必须修改 |
 |---|---|---|---|---|
@@ -207,7 +286,7 @@ database:
 
 > 当前为占位符，首次运行前必须替换为实际 Server 地址。
 
-### 4.2 密钥配置
+### 5.2 密钥配置
 
 | 配置项 | 文件 | 当前值 | 说明 | 风险 |
 |---|---|---|---|---|
@@ -217,7 +296,7 @@ database:
 
 > 这三把密钥必须与 Server `rsa.*` 配置和 Firmware `secret_logic` 逻辑一致。
 
-### 4.3 XiaoZhi 云配置
+### 5.3 XiaoZhi 云配置
 
 | 配置项 | 文件 | 值 | 说明 |
 |---|---|---|---|
@@ -228,7 +307,7 @@ database:
 
 > XiaoZhi Token 从 StackChan Server `/stackChan/xiaozhi/token` 获取，不是直接配置。
 
-### 4.4 运行时持久化（SharedPreferences）
+### 5.4 运行时持久化（SharedPreferences）
 
 | Key | 文件 | 说明 | 类型 |
 |---|---|---|---|
@@ -239,7 +318,7 @@ database:
 | `token` | `app/lib/app_state.dart:133` | Server JWT | String |
 | `XiaoZhiToken` | `app/lib/util/XiaoZhi_util.dart:132` | 小智云 Token | String |
 
-### 4.5 构建配置
+### 5.5 构建配置
 
 | 配置项 | 文件 | 值 | 说明 |
 |---|---|---|---|
@@ -253,7 +332,7 @@ database:
 
 > Android 签名配置当前为明文占位符，发布前必须改为安全密钥管理方案（如环境变量或 CI secret）。
 
-### 4.6 功能开关/常量
+### 5.6 功能开关/常量
 
 | 配置项 | 文件 | 说明 |
 |---|---|---|

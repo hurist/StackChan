@@ -21,6 +21,13 @@ config HOME_SERVER_URL
         StackChan Home Server. The firmware MCP tools compose robot-oriented
         endpoints like /robot/status from this base.
 
+config HOME_SERVER_SHARED_SECRET
+    string "Home Server shared secret"
+    default ""
+    help
+        Optional shared secret used by the HomeRemote WebSocket client. When
+        set, firmware connects to /robot/ws with Authorization: Bearer <secret>.
+
 endmenu
 
 menu "Xiaozhi Assistant"

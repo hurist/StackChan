@@ -1,12 +1,23 @@
 import Fastify from "fastify";
+import fastifyWebsocket from "@fastify/websocket";
 import { fileURLToPath } from "node:url";
-import { loadConfig } from "../config.js";
+import { loadConfig, type HomeServerConfig } from "../config.js";
 import { getHomeServerStatus } from "../state/connection-state.js";
+import { registerRobotSocket } from "../stackchan/client.js";
 
-export function createHttpServer() {
+function isAuthorizedRobotRequest(authorization: string | undefined, config: HomeServerConfig): boolean {
+  if (!config.stackchanSharedSecret) {
+    return true;
+  }
+  return authorization === `Bearer ${config.stackchanSharedSecret}`;
+}
+
+export async function createHttpServer(config: HomeServerConfig = loadConfig()) {
   const app = Fastify({
     logger: true
   });
+
+  await app.register(fastifyWebsocket);
 
   app.get("/health", async () => ({
     ok: true,
@@ -17,12 +28,25 @@ export function createHttpServer() {
 
   app.get("/robot/status", async () => getHomeServerStatus());
 
+  app.get("/robot/ws", { websocket: true }, (socket, request) => {
+    if (!isAuthorizedRobotRequest(request.headers.authorization, config)) {
+      request.log.warn("Rejected unauthorized robot websocket connection");
+      socket.close(1008, Buffer.from("unauthorized"));
+      return;
+    }
+
+    registerRobotSocket(socket, {
+      info: (message, extra) => request.log.info(extra, message),
+      warn: (message, extra) => request.log.warn(extra, message),
+      error: (message, extra) => request.log.error(extra, message)
+    });
+  });
+
   return app;
 }
 
-export async function startHttpServer() {
-  const config = loadConfig();
-  const app = createHttpServer();
+export async function startHttpServer(config: HomeServerConfig = loadConfig()) {
+  const app = await createHttpServer(config);
 
   await app.listen({
     host: config.host,

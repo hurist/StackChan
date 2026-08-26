@@ -252,6 +252,7 @@ public:
     uitk::Signal<CommonLogLevel, std::string_view> onWsLog;
 
     void startWebSocketAvatarService(std::function<void(std::string_view)> onStartLog);
+    void startHomeRemoteService();
 
     /* ----------------------------------- IMU ---------------------------------- */
     uitk::Signal<ImuMotionEvent> onImuMotionEvent;
