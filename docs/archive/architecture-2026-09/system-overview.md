@@ -1,3 +1,6 @@
+> 该文档描述历史方案、历史快照或早期探索，不代表当前实现。
+> 当前方向请参考 docs/README.md 和 docs/architecture.md。
+
 # StackChan 系统总览
 
 ## 1. StackChan 是什么系统

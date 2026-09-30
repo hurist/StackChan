@@ -1,3 +1,6 @@
+> 该文档描述历史方案、历史快照或早期探索，不代表当前实现。
+> 当前方向请参考 docs/README.md 和 docs/architecture.md。
+
 # StackChan AI 二次开发知识库
 
 本文档目录是后续 AI Agent 对 StackChan 进行二次开发时的**入口地图**，目标是让新的 AI 在没有通读仓库的情况下，快速判断：
