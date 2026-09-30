@@ -17,6 +17,7 @@ STT / LLM / Tool Calling / TTS
 - [architecture.md](architecture.md)：当前架构方向与职责边界。
 - [agent-runtime.md](agent-runtime.md)：Agent / Robot Runtime 的职责与调用原则。
 - [development.md](development.md)：开发环境、仓库模块与延续开发的入口。
+- [runtime-v2-todo.md](runtime-v2-todo.md)：按阶段执行、验证和记录的清单。
 - [decisions/](decisions/)：重要架构决策。
 - [archive/](archive/)：旧方案、历史设计和代码现状审计。
 
